@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+
+###
+### 再校正映射器模板
+###
+### 一旦创建recal.table.csv
+### 调用snp(获得变异)来计算 ...recal.table.csv，这将保存在HDFS
+### 输入文件：已比对的bam文件(从一个chr<i>.bam分区得到)
+###
+export BWA=/home/elon/biosoft/bwa.kit/bwa
+export SAMTOOLS=/home/elon/biosoft/samtools-bcftools-htslib/bin/samtools
+export BCFTOOLS=/home/elon/biosoft/samtools-bcftools-htslib/bin/bcftools
+export VCFUTILS=/home/elon/biosoft/samtools-bcftools-htslib/bin/vcfutils.pl
+export PICARD=
+export GATK=
+export HADOOP_HOME=/home/elon/hadoop
+export HADOOP_CONF_DIR=/home/elon/hadoop/conf
+
+#数据目录
+export TMP_HOME=/tmp
+
+#定义参考基因组
+export REF=/home/elon/reference/genome/hg19/hg19.fasta
+
+export CHR_ID=${chr_id}
+export RUN_NAME=${run_name}
+
+# 进入数据目录
+export TEMP=/tmp
+mkdir $TEMP/recal && cd $TEMP/recal
+
+
+input_file=/dnaseq/$RUN_NAME/$CHR_ID/$CHR_ID.sorted.bam
+$HADOOP_HOME/bin/hadoop fs -copyLocal $input_file .
+
+# 重复标记
+java -Xmx60g -jar $PICARD/MarkDuplicates.jar \
+     CREATE_INDEX=true \
+     REMOVE_DUOLICATES=True \
+     ASSUME_SORTED=True \
+     VALIDATION_STRINGENCY=LENIENT \
+     I=$input_file
+     OUTPUT=$CHR_ID.dedup.bam \
+     METRICS_FILE=$CHR_ID.metrics
+
+
+export KNOWN_EXON_VCF=/home/elon/EXON/ref/1000G_phase1.indels.hg19.sites.vcf
+
+# Create Realign Target
+java -Xmx60g -jar $GATK \
+     -R $REF \
+     -T RealignerTargetCreator \
+     -I $CHR_ID.dedup.bam \
+     -o $CHR_ID.intervals \
+     -known $KNOWN_EXON_VCF
+
+# Indel Realigner
+java -Xmx60g -jar $GATK \
+     -R $REF \
+     -I $CHR_ID.dedup.bam \
+     -targetIntervals $CHR_ID.intervals \
+     -o $CHR_ID.realgn.bam
+
+output_file=/dnaseq/$RUN_NAME/$CHR_ID
+$HADOOP_HOME/bin/hadoop fs -put $CHR_ID.realgn.bam $output_file
+
+exit 0

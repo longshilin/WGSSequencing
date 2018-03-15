@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+
+# shell脚本：comparison_reducer.template
+# 在HDFS上以染色体号为目录文件，
+# 将已比对的{partitionNo}.chr<i>.bam小文件合并为一个chr<i>.bam文件
+#
+
+export BWA=/home/elon/biosoft/bwa.kit/bwa
+export SAMTOOLS=/home/elon/biosoft/samtools-bcftools-htslib/bin/samtools
+export BCFTOOLS=/home/elon/biosoft/samtools-bcftools-htslib/bin/bcftools
+export VCFUTILS=/home/elon/biosoft/samtools-bcftools-htslib/bin/vcfutils.pl
+export HADOOP_HOME=/home/elon/hadoop
+export HADOOP_CONF_DIR=/home/elon/hadoop/conf
+
+
+#数据目录
+export TMP_HOME=/tmp
+
+export NUM_THREAD=20
+
+export CHR_ID=${chr_id}
+export RUN_NAME=${run_name}
+
+# 进入数据目录
+mkdir $TMP_HOME/$CHR_ID && cd $TMP_HOME/$CHR_ID
+
+
+# 将所有map端产生的已比对bam文件，按照染色体号进行merge
+# 合并成一个大的、以染色体号作为区分的已排序bam文件
+input_file=/dnaseq/$RUN_NAME/$CHR_ID/*.$CHR_ID.bam
+$HADOOP_HOME/bin/hadoop fs -get $input_file .
+
+# 对每个小bam文件进行索引index
+for i in *.bam
+do
+    $SAMTOOLS index ${i%.*}.bam
+done
+# 各个染色体的merge.bam存于$TMP_HOME/$ANALYSIS_ID文件夹中
+$SAMTOOLS merge $CHR_ID.merge.bam *.bam
+# 对整条染色体排序
+$SAMTOOLS sort -@ $NUM_THREAD -O bam -o $CHR_ID.sorted.bam $CHR_ID.merge.bam
+# 对整条染色体索引
+$SAMTOOLS index $CHR_ID.sorted.bam
+
+output_file=/dnaseq/$RUN_NAME/$CHR_ID
+$HADOOP_HOME/bin/hadoop fs -put $CHR_ID.sorted.bam $output_file
+
+exit 0

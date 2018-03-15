@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+
+#
+# 对一个大的已合并的merge.bam文件 按照position分区
+# 存储在HDFS上的/genome/dnaseq/output/$ANALYSIS_ID/$CHR文件中
+# 其格式为 $CHR.bam.$partitionNo
+# 并通过一个文件列表来记录共有多少个分区文件
+#
+
+export BWA=/home/elon/biosoft/bwa.kit/bwa
+export SAMTOOLS=/home/elon/biosoft/samtools-bcftools-htslib/bin/samtools
+export BCFTOOLS=/home/elon/biosoft/samtools-bcftools-htslib/bin/bcftools
+export VCFUTILS=/home/elon/biosoft/samtools-bcftools-htslib/bin/vcfutils.pl
+export HADOOP_HOME=/home/elon/hadoop
+export HADOOP_CONF_DIR=/home/elon/hadoop/conf
+
+
+#数据目录
+export TMP_HOME=/tmp
+export BWA_INDEXES=/home/elon/reference/index/bwa
+
+# TemplateMap
+export CHR=chr${chr_id}
+export ANALYSIS_ID=${analysis_id}
+
+# 进入数据目录
+cd $TMP_HOME/$ANALYSIS_ID/$CHR
+
+# 对chr.bam进行分区
+fileNo=0
+count=0
+
+# 计算一个bam文件的总长度
+length=`$SAMTOOLS depth $CHR.merge.bam`
+start=0
+count=1000
+
+output_file="/genome/dnaseq/output/${ANALYSIS_ID}/comparison"
+# 将各个染色体regeion分区之后 得到的小的分区文件保存于HDFS上
+# 每个染色体所生成的文件列表格式为 ${regeionNo}\t${CHR}.bam.${regeionNo}\t${ANALYSIS_ID}
+regeionFilelist="regeionFilelist.txt"
+HDFSRegeionFile="/genome/dnaseq/output/${ANALYSIS_ID}/regeionFilelist.txt"
+
+if [ $(($start + $count)) -ge $length ]; then
+	regeionNo=$(printf "%04d" "${fileNo}")
+	end=$((start + count))
+	# 对合并的每个染色体merge.bam文件按照指定位置分区为小的bam文件,以start-end的position截取bam文件
+	$SAMTOOLS view -b $CHR.merge.bam -o $CHR.bam.$regeionNo $CHR:$start-$end
+	$HADOOP_HOME fs -put $CHR.bam.* $output_file
+	printf "${regeionNo}\t${CHR}.bam.${regeionNo}\t${ANALYSIS_ID} \n">> $regeionFilelist
+	$HADOOP_HOME fs -put $regeionFilelist $output_file
+
+	start=$((end + 1))
+	fileNo=$((fileNo + 1))
+else
+	# 最后一个分区从$start一直到最后结束的position
+	$SAMTOOLS view -b $CHR.merge.bam -o $CHR.bam.$regeionNo $CHR:$start
+	$HADOOP_HOME fs -put $CHR.bam.* $output_file
+	printf "${CHR}\t${CHR}.bam.${regeionNo}\t${ANALYSIS_ID} \n">> $regeionFilelist
+	$HADOOP_HOME fs -put $regeionFilelist $output_file
+fi
+
+exit 0

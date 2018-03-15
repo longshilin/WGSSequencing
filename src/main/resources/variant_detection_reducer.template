@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+# 调用snp(获得变异)
+# 连接所有$kEY.raw.bcf文件
+#
+
+FINAL_BCF_FILE=$FINAL_DIR/all.raw.bcf
+VCF_FILE=$FINAL_DIR/var.flt.vcf
+
+## 连接BCF文件，输入文件必须排序
+## 而且相同的样本要以同样的顺序出现
+##
+ALL_BCF_FILES='find $RECAL_DIR/ -name '*.raw.bcf' | sort'
+$BCFTOOLS cat $ALL_BCF_FILES > $FINAL_BCF_FILE
+
+#
+# 启动bcftools & 创建最终的VCF文件
+$BCFTOOLS view $FINAL_BCF_FILE | $VCFUTILS varFilter > $VCF_FILE
+

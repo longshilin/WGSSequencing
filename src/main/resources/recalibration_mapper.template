@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+
+
+
+#
+# 将4.recal.table.csv放在GLOBAL/SHARED目录中 (集群共享目录)
+#
+export SHARED_RECAL_DIR=/dnaseq/recal/${run_name}
+
+## 标记重复
+
+java -Xmx1.5g \
+     -Djava.io.tmpdir=$JAVA_IO_TMPDIR \
+     -jar $PICARD_JAR/MarkDuplicates.jar \
+     I=$BAM_FILE \
+     O=2.mark.out.bam \
+     M=2.mark.out.metrics \
+     AS=true
+
+## 本地重新比对
+samtools index 2.mark.out.bam
+java -Xmx1.5g \
+     -Djava.io.tmpdir=$JAVA_IO_TMPDIR \
+     -jar $GATK_JAR/GenomeAnalysisTK.jar \
+     -T IndelRealigner \
+     -I 2.mark.out.bam \
+     -o 3.realigned.out.bam \
+     -R $REF \
+     -targetIntervals $DBSNP/dbsnp_indel.intervals \
+     -known $DBSNP/dbsnp_indel.vcf \
+     --consensusDeterminationModel KNOWNS_ONLY \
+     -LOD 0.4
+
+## 碱基质量再校正
+java -Xmx1.5g \
+     -Djava.io.tmpdir=$JAVA_IO_TMPDIR \
+     -jar $GATK_JAR/GenomeAnalysisTK.jar \
+     -T CountCovariates \
+     -I 3.realigned.out.bam \
+     -recalFile 4.recal.table.csv \
+     -R $REF
+     -knownSites $DBSNP/dbsnp.vcf \
+     -cov QualityScoreCovariate \
+     -cov ReadGroupCovariate \
+     -cov PositionCovariate \
+     -cov DinucCovarate
+
+# 将结果复制到共享目录
+cp -f 4.recal.table.csv $SHARED_RECAL_DIR/$REGEION_NO.4.recal.table.csv
+
+##
+## 还需要保存3.realigned.out.bam
+## (variant_detection_mapper.sh.template中需要用到)
+##
+cp -f 3.realigned.out.bam $SHARED_RECAL_DIR/$BAM_FILE.3.realigned.out.sam
+
+###
+### 所以可以得到：
+### $SHARED_RECAL_DIR/$KEY.4.recal.table.csw 对应KEY=1,2,3, ...
+### $SHARED_RECAL_DIR/$BAM_FILE.3.realigned.out.bam 对应KEY=1,2,3, ...
+### (将是variant_detection_mapper.sh.template的输入)
+###
+
+

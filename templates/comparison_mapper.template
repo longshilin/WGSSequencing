@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+
+###################################################
+#   Description: 将各DNA序列对与REF比对并按chrn分区    #
+#   Author:elon                                   #
+#   Version:1.0                                   #
+#   CreateTime:2018-3-14                          #
+###################################################
+
+export BWA=/home/elon/biosoft/bwa.kit/bwa
+export SAMTOOLS=/home/elon/biosoft/samtools-bcftools-htslib/bin/samtools
+export BCFTOOLS=/home/elon/biosoft/samtools-bcftools-htslib/bin/bcftools
+export VCFUTILS=/home/elon/biosoft/samtools-bcftools-htslib/bin/vcfutils.pl
+export HADOOP_HOME=/home/elon/hadoop
+export HADOOP_CONF_DIR=/home/elon/hadoop/conf
+
+#数据目录
+export TMP_HOME=/tmp
+
+#定义参考基因组
+export REF=/home/elon/reference/genome/hg19/hg19.fasta
+
+# KEY唯一标识输入文件: ${SampleName}_${fileNumber}
+KEY=${key}
+INPUT_FILE_1=${input_file_1}
+INPUT_FILE_2=${input_file_2}
+RUN_NAME=${run_name}
+
+# 设置可使用的线程数
+NUM_THREAD=3
+# read group header line such as `@RG\tID:foo\tSM:bar'
+INFO_RG="'@RG\tID:sample\tSM:sample\tPL:Illumina'"
+
+cd ${TMP_HOME}
+
+# 从HDFS上下载gz数据到本地并解压
+HDFSPath="/fastq"
+${HADOOP_HOME} fs -get ${HDFSPath}/${INPUT_FILE_1}.gz ${HDFSPath}/${INPUT_FILE_2}.gz .
+gunzip ${INPUT_FILE_1}.gz ${INPUT_FILE_2}.gz
+
+# pair-end比对
+${BWA} aln -t ${NUM_THREAD} ${REF} ${INPUT_FILE_1}.gz > out1.sai
+${BWA} aln -t ${NUM_THREAD} ${REF} ${INPUT_FILE_2}.gz > out2.sai
+
+${BWA} sampe -r ${INFO_RG} ${REF} out1.sai out2.sai ${INPUT_FILE_1}.gz ${INPUT_FILE_2}.gz | \
+     ${SAMTOOLS} view -Su -F 4 - | ${SAMTOOLS} sort - ${KEY}.sorted.bam
+
+# 索引${KEY}.sorted.bam文件
+${SAMTOOLS} index ${KEY}.sorted.bam
+
+
+# 将比对数据分区
+# 对于每个map分区的数据存储在HDFS的/dnaseq/$RUN_NAME/$CHR中
+for i in {1..22}
+do
+    CHR=chr${i}
+    # 将已排序的aln.flt.bam数据按照染色体号进行分区
+    ${SAMTOOLS} view -b -o ${CHR}.bam ${KEY}.sorted.bam ${CHR}
+    output_file="/dnaseq/$RUN_NAME/$CHR/$KEY.$CHR.bam"
+    ${HADOOP_HOME}/bin/hadoop fs -put ${CHR}.bam ${output_file}
+done
+
+# 对X、Y和M染色体做同样的处理
+${SAMTOOLS} view -b -o chr23.bam ${KEY}.sorted.bam chrX chrY chrM
+output_file="/dnaseq/$RUN_NAME/$CHR/$KEY.chr23.bam"
+${HADOOP_HOME}/bin/hadoop fs -put chr23.bam ${output_file}
+
+exit 0

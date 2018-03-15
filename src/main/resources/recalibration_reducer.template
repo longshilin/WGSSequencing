@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+###
+### 将所有 -.4.recal.table.csv 文件 (由各个.bam文件生成)
+### 合并为一个recal.table.merged.final.txt文件
+###
+### 一旦创建了recal.table.merged.fianl.txt,它将保存在
+### /dnaseq/recal/${analysis_id}/ ,并输入到VariantDetectionMapper。
+###
+###
+
+export ANALYSIS_ID=${analysis_id}
+
+#
+# 所有 -.4.recal.table.csv文件都在$SHARED_RECAL_DIR目录中
+#
+export SHARED_RECAL_DIR=/dnaseq/recal/${ANALYSIS_ID}/
+recal_files=`find $SHARED_RECAL_DIR -name '*.4.recal.table.csv' | sort`
+num_of_recal=`find $SHARED_RECAL_DIR -name '*.4.recal.table.csv' | wc -1`
+
+### 注意：所有计算将在$SHARED_RECAL_DIR中完成
+# 准备java输出文件,将recal_files目录中所有的文件提取出来，以空格分隔放在java_input_files中
+java_input_files=""
+for file in $recal_files
+do
+    echo "preparing java input file=$file"
+    java_input_files="$file $java_input_files"
+done
+
+cd $SHARED_RECAL_DIR
+current_dir=`pwd`
+# 实现一个JavaMergeCoveraites方法，可以合并多个csv文件到一个文件中
+export MERGE_COVERIATES=JavaMergeCoveraites
+$JAVA_HOME/bin/java -Xms1g -Xmx1.5g $MERGE_COVARIATES \
+                    -i "$java_input_files" \
+                    -o recal.txt.unsorted
+
+#
+# 相应地对文件排序
+#
+/bin/sort -t, -k 2, 2n -k3, 3n -k4, 4 recal.txt.unsorted > recal.txt.sorted
+
+#
+# recal.txt.sorted文件将在变异检测Mapper中使用
+#

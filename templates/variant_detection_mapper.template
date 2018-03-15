@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+export BWA=/home/elon/biosoft/bwa.kit/bwa
+export SAMTOOLS=/home/elon/biosoft/samtools-bcftools-htslib/bin/samtools
+export BCFTOOLS=/home/elon/biosoft/samtools-bcftools-htslib/bin/bcftools
+export VCFUTILS=/home/elon/biosoft/samtools-bcftools-htslib/bin/vcfutils.pl
+export PICARD=
+export GATK=
+export HADOOP_HOME=/home/elon/hadoop
+export HADOOP_CONF_DIR=/home/elon/hadoop/conf
+
+#数据目录
+export TMP_HOME=/tmp
+
+#定义参考基因组
+export REF=/home/elon/reference/genome/hg19/hg19.fasta
+
+export CHR_ID=${chr_id}
+export RUN_NAME=${run_name}
+
+# 进入数据目录
+export TEMP=/tmp
+mkdir $TEMP/variant && cd $TEMP/variant
+
+input_file=/dnaseq/$RUN_NAME/$CHR_ID/$CHR_ID.realgn.bam
+$HADOOP_HOME/bin/hadoop fs -copyLocal $input_file .
+
+java -Xmx60g -jar $GATK \
+     -T UnifiedGenotyper \
+     -R $REF \
+     -I $CHR_ID.realgn.bam \
+     -o $CHR_ID.gatk.UG.vcf \
+     -stand_call_conf 30.0 \
+     -stand_emit_conf 0 \
+     -rf BadCigar
+
+output_file=/dnaseq/$RUN_NAME/$CHR_ID
+$HADOOP_HOME/bin/hadoop fs -put $CHR_ID.gatk.UG.vcf $output_file
+
+exit 0

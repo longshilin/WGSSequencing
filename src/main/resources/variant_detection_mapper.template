@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+#
+# 1 完成碱基质量再校正：
+# GATK要求BAM文件扩展名必须是.bam
+samtools index $REALIGNED_OUT_BAM_FILE
+#
+
+java -Xmx1.5g \
+    -Djava.io.tmpdir=$JAVA_IO_TMPDIR \
+    -jar $GATK_JAR/GenomeAnalysisTK.jar \
+    -T TableRecalibration \
+    -I $REALIGNED_OUT_BAM_FILE \
+    -o 4.recal.out.bam \
+    -R $REF \
+    -recalFile $SHARED_RECAL_DIR/recal.table.merged.final.txt
+
+# 2 变异调用和过滤
+samtools mpileup -Duf $REF -q 1 4.recal.out.bam | bcftools view -bvg ] - > \
+$REALIGNED_OUT_BAM_FILE.raw.bcf
+
