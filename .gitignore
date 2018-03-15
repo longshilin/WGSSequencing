@@ -1,6 +1,6 @@
 *.class
 
-/META-INF/
+META-INF/
 
 #package files
 *.war
