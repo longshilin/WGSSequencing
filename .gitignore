@@ -1,5 +1,7 @@
 *.class
 
+/META-INF/
+
 #package files
 *.war
 *.ear
